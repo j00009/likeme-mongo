@@ -2,6 +2,7 @@ const express = require('express')
 const app = express()
 
 const {insertar, leer, actualizar} = require('./db')
+const dotenv = require('dotenv').config();
 
 app.use(express.static("assets"))
 app.use(express.json())
@@ -50,6 +51,6 @@ app.put("/post", async (req, res) =>
             res.json({error: 'No fue posible dar like al post.'})
         }   
     })
-    app.listen(3000, () => {
-        console.log('app corriendo en puerto 3000')
+    app.listen(3001, () => {
+        console.log('app corriendo en puerto 3001')
     })

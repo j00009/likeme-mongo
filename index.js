@@ -1,6 +1,7 @@
 const express = require('express')
 const app = express()
-const { insertar, leer, actualizar } = require('./db')
+const { insertar, leer, actualizar, eliminar } = require('./db');
+const { error } = require('node:console');
 const dotenv = require('dotenv').config();
 
 app.use(express.static("assets"))
@@ -39,6 +40,18 @@ app.put("/post", async (req, res) => {
         res.send(response);
     } catch (error) {
         res.status(500).json({ error: 'No fue posible dar like al post.' })
+    }
+})
+
+app.delete("/post-eliminar", async(req, res)=> {
+    const did =req.query;
+    try {
+        const response = await eliminar(did)
+        res.send(response)
+            res.status(500).json({error:'No se pudo eliminar el post'});
+        
+    } catch (error) {
+        
     }
 })
 

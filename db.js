@@ -14,7 +14,7 @@ const postSchema = new mongoose.Schema({
     likes: { type: Number, default: 0 }
 });
 
-// Transformación para que el frontend reciba "id" en lugar de "_id"
+
 postSchema.set('toJSON', {
     virtuals: true,
     versionKey: false,
@@ -24,15 +24,13 @@ postSchema.set('toJSON', {
     }
 });
 
-// 3. Crear el Modelo
 const Post = mongoose.model('Post', postSchema);
 
-// --- FUNCIONES DE LA LÓGICA ---
 
 const insertar = async (payload) => {
     const nuevoPost = new Post({
         usuario: payload.usuario,
-        url: payload.URL, // El front envía URL en mayúsculas
+        url: payload.URL, 
         descripcion: payload.descripcion,
         likes: 0
     });
@@ -54,5 +52,12 @@ const actualizar = async (dato) => {
     );
     return result;
 };
+const eliminar = async (dato) => {
+    const id = typeof dato === 'object' ? dato.id : dato;
 
-module.exports = { insertar, leer, actualizar };
+    const result = await Post .findByIdAndDelete(id)
+
+    return result
+}
+
+module.exports = { insertar, leer, actualizar, eliminar};

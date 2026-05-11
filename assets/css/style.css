@@ -1,35 +1,92 @@
 body {
-    background: #f1f1f1;
-  }
+    background-color: #f4f6f9;
+    font-family: Arial, Helvetica, sans-serif;
+}
 
-  form {
-    padding: 15px;
-    background: #0d47a1;
-    color: white;
-  }
+.navbar-brand {
+    font-size: 1.4rem;
+}
 
-  .card-body {
-    background: #e1e2e1;
-  }
+.posts {
+    min-height: 80vh;
+}
 
-  #creado {
-    background: #002b55;
-  }
+.post-card {
+    background: white;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: 0.2s ease;
+}
 
-  .card {
-    background: transparent !important;
-    border: none !important;
-  }
+.post-card:hover {
+    transform: translateY(-3px);
+}
 
-  .card-img-top {
-    width: 100%;         
-    height: 200px;      
-    object-fit: cover;   
-    
-  }
-  .card {
-    height: 350px;      
-    overflow: hidden;    
-    margin: 20px;
-    
-  }
+.post-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+}
+
+.post-user {
+    font-weight: bold;
+    font-size: 1rem;
+}
+
+.post-img {
+    width: 100%;
+    height: 350px;
+    object-fit: cover;
+}
+
+.post-body {
+    padding: 1rem;
+}
+
+.post-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+}
+
+.like-btn {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    color: crimson;
+}
+
+.like-btn:hover {
+    transform: scale(1.1);
+}
+
+.delete-btn {
+    border: none;
+    background: none;
+    color: #666;
+    font-size: 1.1rem;
+}
+
+.delete-btn:hover {
+    color: red;
+}
+
+.descripcion {
+    color: #555;
+    margin-top: 0.5rem;
+}
+
+.likes {
+    font-weight: bold;
+}
+
+@media (max-width: 768px) {
+
+    .post-img {
+        height: 250px;
+    }
+
+}

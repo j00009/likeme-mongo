@@ -1,87 +1,540 @@
-$(document).ready(function () {
-  $("form:first").submit(async (e) => {
-    e.preventDefault();
-    let usuario = $("form:first input:first").val();
-    let URL = $("form:first input:last").val();
-    let descripcion = $("form:first textarea").val();
-    const { data } = await axios.post("/post", {
-      usuario,
-      URL,
-      descripcion,
-    });
-    $("#creado").removeClass("d-none");
-    getPosts();
-  });
-});
-async function getPosts() {
-  const { data } = await axios.get("/posts");
+let usuarioLogueado = JSON.parse(
+    localStorage.getItem('usuario')
+) || null;
+const postsContainer = document.querySelector('.posts');
 
-  data.sort((a, b) => {
-    if (b.likes === a.likes) {
-      // Para strings en JS, usamos localeCompare o comparaciones directas
-      return a.id.localeCompare(b.id);
-    }
-    return b.likes - a.likes;
-  });
+const API_URL = 'http://localhost:3001';
 
-  $(".posts").html("");
-  $.each(data, (i, u) => {
-    $(".posts").append(`
+// TEMPLATE CARD
 
-    `);
-      $.each(data, (i, u) => {
-  $(".posts").append(`
-    <div class="card col-12 col-sm-4 d-inline mx-0 px-3 position-relative">
-      <div class="card-body p-0">
+const crearCard = (post) => {
 
-        <!-- BOTÓN DELETE -->
-        <button 
-          class="btn btn-danger position-absolute top-0 end-0 m-2 rounded-circle"
-          onclick="eliminar('${u.id}')"
-          style="width:40px; height:40px; display:flex; align-items:center; justify-content:center;"
-        >
-          <i class="bi bi-trash"></i>
-        </button>
-
-        <img class="card-img-top" src="${u.url}" style="width: 100%" />
-
-        <div class="p-3">
-          <h4 class="card-title">${u.usuario}</h4>
-          <p class="card-text">${u.descripcion}</p>
-          
-          <svg
-            style="width: 50px; height: 50px; cursor: pointer;" 
-            viewBox="0 0 24 24"
-            onclick="like('${u.id}')"
-          >
-            <path
-              fill="${u.likes ? 'red' : 'currentColor'}"
-              d="${u.likes ?
-        'M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z' :
-        'M12.1,18.55L12,18.65L11.89,18.55C7.14,14.24 4,11.39 4,8.5C4,6.5 5.5,5 7.5,5C9.04,5 10.54,6 11.07,7.36H12.93C13.46,6 14.96,5 16.5,5C18.5,5 20,6.5 20,8.5C20,11.39 16.86,14.24 12.1,18.55'}"
-            />
-          </svg>
-          <h5 class="d-inline"> ${u.likes || 0} </h5>
-        </div>
-      </div>
-    </div>
-  `);
-});
+    return `
     
-  });
-  
-}
-getPosts()
-function like(id) {
-  axios.put(`/post?id=${id}`).then(() => {
-    getPosts()
-  })
+        <div class="col-12 col-md-6 col-lg-4">
+
+            <div class="post-card">
+
+                <div class="post-header">
+
+                    <div>
+
+                        <div class="post-user">
+                            <i class="bi bi-person-circle"></i>
+                            ${post.usuario}
+                        </div>
+
+                        <div class="post-date">
+                            ${new Date(post.fecha).toLocaleDateString()}
+                        </div>
+
+                    </div>
+
+                    ${
+                        usuarioLogueado &&
+                        usuarioLogueado.id === post.usuarioId
+                     ? `
+
+                    <div class="d-flex gap-2">
+
+                        <button
+                            class="btn btn-sm btn-warning"
+                            onclick='abrirEditar(${JSON.stringify(post)})'>
+
+                            <i class="bi bi-pencil"></i>
+                        </button>
+
+                        <button
+                            class="btn btn-sm btn-danger"
+                            onclick="eliminarPost('${post.id}')">
+
+                            <i class="bi bi-trash"></i>
+                        </button>
+
+                    </div>
+
+                `
+                : ''
+        }
+
+                </div>
+
+                <img
+                    src="${post.url}"
+                    class="post-img"
+                    alt="post">
+
+                <div class="post-body">
+
+                    <div class="descripcion">
+                        ${post.descripcion || ''}
+                    </div>
+
+                    <div class="post-actions">
+
+                        <button
+                            class="like-btn"
+                            onclick="darLike('${post.id}')">
+
+                            <i class="bi bi-heart-fill"></i>
+                        </button>
+
+                        <span class="likes">
+                            ${post.likes} likes
+                        </span>
+
+                    </div>
+
+                    <!-- COMENTARIOS -->
+
+                    <div class="comentarios-preview mt-3">
+
+    ${post.comentarios?.slice(0, 2).map(comentario => `
+
+        <div class="comentario-item">
+
+            <strong>
+                ${comentario.usuario}
+            </strong>
+
+            ${comentario.texto}
+
+        </div>
+
+    `).join('')}
+
+    ${post.comentarios?.length > 2
+            ? `
+                <button
+                    class="btn btn-sm btn-link"
+                    onclick='verComentarios(${JSON.stringify(post)})'>
+
+                    Ver todos los comentarios
+                </button>
+              `
+            : ''
+        }
+</div>
+                    </div>
+
+                    <!-- INPUT COMENTARIO -->
+
+                    <div class="comentario-box mt-3">
+
+                        <input
+                            id="comentario-${post.id}"
+                            type="text"
+                            class="form-control"
+                            placeholder="Escribe un comentario">
+
+                        <button
+                            class="btn btn-sm btn-primary mt-2"
+                            onclick="comentarPost('${post.id}')">
+
+                            Comentar
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    `;
+};
+
+// CARGAR POSTS
+
+const cargarPosts = async () => {
+
+    try {
+
+        const response = await axios.get(`${API_URL}/posts`);
+
+        const posts = response.data;
+
+        postsContainer.innerHTML = '';
+
+        posts.forEach(post => {
+
+            postsContainer.innerHTML += crearCard(post);
+
+        });
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+};
+
+
+
+// CREAR POST
+
+const formPost = document.getElementById('formPost');
+
+formPost.addEventListener('submit', async (e) => {
+
+    e.preventDefault();
+
+    const usuario = document.getElementById('usuario').value;
+
+    const url = document.getElementById('url').value;
+
+    const descripcion = document.getElementById('descripcion').value;
+
+    const payload = {
+        usuario: usuarioLogueado.nombre,
+        usuarioId: usuarioLogueado.id,
+        url,
+        descripcion
+    };
+
+    try {
+
+        await axios.post(`${API_URL}/post`, payload);
+
+        formPost.reset();
+
+        const modalElement = document.getElementById('modalPost');
+
+        const modal = bootstrap.Modal.getInstance(modalElement);
+
+        modal.hide();
+
+        cargarPosts();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+});
+
+
+
+// LIKE
+
+const darLike = async (id) => {
+
+    try {
+
+        await axios.put(`${API_URL}/post?id=${id}`);
+
+        cargarPosts();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+};
+
+
+
+// ELIMINAR
+
+const eliminarPost = async (id) => {
+
+    try {
+
+        await axios.delete(`${API_URL}/post-eliminar?id=${id}`);
+
+        cargarPosts();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+};
+
+
+
+// MIS POSTS
+
+const misPosts = async () => {
+
+    if (!usuarioLogueado) {
+
+        alert('Debes iniciar sesión');
+
+        return;
+    }
+
+    try {
+
+        const response = await axios.get(`${API_URL}/posts`);
+
+        const posts = response.data;
+
+        const filtrados = posts.filter(post =>
+            post.usuarioId === usuarioLogueado.id
+        );
+
+        postsContainer.innerHTML = '';
+
+        filtrados.forEach(post => {
+
+            postsContainer.innerHTML += crearCard(post);
+
+        });
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+};
+
+// INICIAR
+
+cargarPosts();
+
+const usuarioActual = document.getElementById('usuarioActual');
+
+if (usuarioLogueado) {
+
+    usuarioActual.innerHTML = `
+
+        <span class="text-white">
+            <i class="bi bi-person-circle"></i>
+            ${usuarioLogueado.nombre}
+        </span>
+
+        <button
+            class="btn btn-danger btn-sm"
+            onclick="logout()">
+
+            Salir
+        </button>
+    `;
+
+} else {
+
+    usuarioActual.innerHTML = `
+    
+        <button
+            class="btn btn-light"
+            data-bs-toggle="modal"
+            data-bs-target="#loginModal">
+
+            Login
+        </button>
+    `;
 }
 
-function eliminar(id) {
-  if (confirm("¿Seguro que quieres eliminar este post?")) {
-    axios.delete(`/post-eliminar?id=${id}`).then(() => {
-      getPosts();
+const logout = () => {
+
+    localStorage.removeItem('usuario');
+
+    location.reload();
+};
+
+const formRegistro = document.getElementById('formRegistro');
+
+formRegistro.addEventListener('submit', async (e) => {
+
+    e.preventDefault();
+
+    const payload = {
+        nombre: document.getElementById('registroNombre').value,
+        email: document.getElementById('registroEmail').value,
+        password: document.getElementById('registroPassword').value
+    };
+
+    try {
+
+        await axios.post(`${API_URL}/registro`, payload);
+
+        const registroModal = bootstrap.Modal.getInstance(
+    document.getElementById('registroModal')
+);
+
+registroModal.hide();
+
+const loginModal = new bootstrap.Modal(
+    document.getElementById('loginModal')
+);
+
+loginModal.show();
+
+formRegistro.reset();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+});
+
+const formLogin = document.getElementById('formLogin');
+
+formLogin.addEventListener('submit', async (e) => {
+
+    e.preventDefault();
+
+    const payload = {
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value
+    };
+
+    try {
+
+        const response = await axios.post(
+            `${API_URL}/login`,
+            payload
+        );
+
+        localStorage.setItem(
+            'usuario',
+            JSON.stringify(response.data)
+        );
+
+        location.reload();
+
+    } catch (error) {
+
+        alert('Credenciales incorrectas');
+
+    }
+});
+
+const comentarPost = async (id) => {
+
+    if (!usuarioLogueado) {
+
+        alert('Debes iniciar sesión');
+
+        return;
+    }
+
+    const input = document.getElementById(
+        `comentario-${id}`
+    );
+
+    const texto = input.value;
+
+    if (!texto.trim()) return;
+
+    try {
+
+        await axios.post(
+
+            `${API_URL}/comentario/${id}`,
+
+            {
+                usuario: usuarioLogueado.nombre,
+                texto
+            }
+        );
+
+        cargarPosts();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+};
+const verComentarios = (post) => {
+
+    const container = document.getElementById(
+        'comentariosContainer'
+    );
+
+    container.innerHTML = '';
+
+    post.comentarios.forEach(comentario => {
+
+        container.innerHTML += `
+
+            <div class="mb-3">
+
+                <strong>
+                    ${comentario.usuario}
+                </strong>
+
+                <div>
+                    ${comentario.texto}
+                </div>
+
+            </div>
+        `;
     });
-  }
-}
+
+    const modal = new bootstrap.Modal(
+        document.getElementById('comentariosModal')
+    );
+
+    modal.show();
+};
+
+const abrirEditar = (post) => {
+
+    document.getElementById('editPostId').value =
+        post.id;
+
+    document.getElementById('editUrl').value =
+        post.url;
+
+    document.getElementById('editDescripcion').value =
+        post.descripcion;
+
+    const modal = new bootstrap.Modal(
+        document.getElementById('editarModal')
+    );
+
+    modal.show();
+};
+
+const formEditar =
+    document.getElementById('formEditar');
+
+formEditar.addEventListener('submit', async (e) => {
+
+    e.preventDefault();
+
+    const id =
+        document.getElementById('editPostId').value;
+
+    const url =
+        document.getElementById('editUrl').value;
+
+    const descripcion =
+        document.getElementById('editDescripcion').value;
+
+    try {
+
+        await axios.put(
+
+            `${API_URL}/editar-post/${id}`,
+
+            {
+                url,
+                descripcion
+            }
+        );
+
+        const modal = bootstrap.Modal.getInstance(
+            document.getElementById('editarModal')
+        );
+
+        modal.hide();
+
+        cargarPosts();
+
+    } catch (error) {
+
+        console.log(error);
+
+    }
+
+});

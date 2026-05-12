@@ -1,0 +1,32 @@
+{
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "mongoose": "^9.5.0",
+    "nodemon": "^3.1.14",
+    "pm2": "^7.0.1"
+  },
+  "name": "likeme",
+  "version": "1.0.0",
+  "description": "red social",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "nodemon index.js",
+    "build": "vite build --outDir public",
+    "check": "node --check index.js && node --check db.js && node --check models/Post.js && node --check models/User.js && node --check models/Comment.js && node --check config/database.js && node --check utils/toJsonOptions.js && node --check utils/authToken.js && node --check middlewares/auth.js && node --check controllers/postController.js && node --check controllers/userController.js && node --check controllers/commentController.js && node --check services/postService.js && node --check services/userService.js && node --check services/commentService.js && node --check routes/postRoutes.js && node --check routes/userRoutes.js && node --check routes/commentRoutes.js",
+    "test": "npm run check"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "author": "Joel Troncoso",
+  "license": "ISC",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "vite": "^8.0.12"
+  }
+}

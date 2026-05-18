@@ -24,11 +24,6 @@ const postSchema = new mongoose.Schema(
             type: String,
             trim: true
         },
-        thumbnailUrl: {
-            type: String,
-            trim: true,
-            default: ''
-        },
         type: {
             type: String,
             enum: ['image', 'video', 'reel', 'text'],

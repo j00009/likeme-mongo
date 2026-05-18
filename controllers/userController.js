@@ -36,6 +36,11 @@ const me = async (req, res) => {
     res.json(userService.sanitizeUser(req.user));
 };
 
+const updateMe = async (req, res) => {
+    const user = await userService.updateCurrentUser(req.user, req.body);
+    res.json(user);
+};
+
 const updateUser = async (req, res) => {
     if (!isValidObjectId(req.params.id)) {
         return res.status(400).json({ error: 'ID de usuario invalido' });
@@ -58,6 +63,28 @@ const deleteUser = async (req, res) => {
     res.json(user);
 };
 
+const followUser = async (req, res) => {
+    if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: 'ID de usuario invalido' });
+    }
+
+    const user = await userService.followUser(req.user, req.params.id);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    res.json(user);
+};
+
+const unfollowUser = async (req, res) => {
+    if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: 'ID de usuario invalido' });
+    }
+
+    const user = await userService.unfollowUser(req.user, req.params.id);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    res.json(user);
+};
+
 module.exports = {
     listUsers,
     getUser,
@@ -65,6 +92,9 @@ module.exports = {
     register,
     login,
     me,
+    updateMe,
     updateUser,
+    followUser,
+    unfollowUser,
     deleteUser
 };

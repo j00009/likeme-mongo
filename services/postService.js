@@ -147,6 +147,31 @@ const listPosts = async (currentUser) => {
     return sortRecommendedPosts(normalizedPosts, preferredTags);
 };
 
+const listFollowingPosts = async (currentUser) => {
+    if (!currentUser) {
+        const error = new Error('Debes iniciar sesion');
+        error.statusCode = 401;
+        throw error;
+    }
+
+    const following = currentUser.following || [];
+    if (following.length === 0) return [];
+
+    const posts = await Post.find({ usuario: { $in: following } })
+        .populate(postPopulation)
+        .sort({ createdAt: -1 });
+
+    return normalizePostsWithUserState(posts, currentUser);
+};
+
+const listPostsByUser = async (userId, currentUser) => {
+    const posts = await Post.find({ usuario: userId })
+        .populate(postPopulation)
+        .sort({ createdAt: -1 });
+
+    return normalizePostsWithUserState(posts, currentUser);
+};
+
 const listPostClusters = async (currentUser) => {
     const preferredTags = await getUserPreferenceTags(currentUser);
     const clusters = await Post.aggregate([
@@ -241,7 +266,6 @@ const createPost = async (payload, currentUser) => {
         autorNombre: user.nombre,
         url: mediaUrl,
         mediaUrl,
-        thumbnailUrl: normalizeExternalUrl(payload.thumbnailUrl || ''),
         type,
         tags: normalizeTags(payload.tags),
         descripcion: payload.descripcion,
@@ -272,7 +296,6 @@ const updatePost = async (id, payload, currentUser) => {
         update.mediaUrl = normalizeExternalUrl(payload.mediaUrl || payload.URL || payload.url);
         update.url = update.mediaUrl;
     }
-    if (Object.prototype.hasOwnProperty.call(payload, 'thumbnailUrl')) update.thumbnailUrl = normalizeExternalUrl(payload.thumbnailUrl || '');
     if (payload.type) update.type = normalizeType(payload.type, update.mediaUrl);
     if (Object.prototype.hasOwnProperty.call(payload, 'tags')) update.tags = normalizeTags(payload.tags);
     if (payload.descripcion) update.descripcion = payload.descripcion;
@@ -365,6 +388,8 @@ const deletePost = async (id, currentUser) => {
 
 module.exports = {
     listPosts,
+    listFollowingPosts,
+    listPostsByUser,
     listPostClusters,
     getPostById,
     createPost,

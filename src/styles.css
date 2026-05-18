@@ -283,6 +283,16 @@ button {
   width: 100%;
 }
 
+.profile-actions {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.profile-action {
+  width: 100%;
+}
+
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -456,25 +466,57 @@ p {
   margin-top: 1.1rem;
 }
 
-.stats-panel div {
+.stat-card {
+  width: 100%;
   padding: 0.8rem;
   background: var(--surface-soft);
   border-radius: 14px;
+  border: 1px solid transparent;
+  color: var(--text);
+  text-align: left;
 }
 
-.stats-panel strong,
-.stats-panel span {
+.stats-panel button.stat-card {
+  cursor: pointer;
+}
+
+.stats-panel button.stat-card:hover,
+.stats-panel button.stat-card.active {
+  border-color: var(--primary);
+  background: var(--chip);
+}
+
+.stat-card strong,
+.stat-card span {
   display: block;
 }
 
-.stats-panel strong {
+.stat-card strong {
   font-size: 1.2rem;
 }
 
-.stats-panel span {
+.stat-card span {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.feed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ghost-button.compact {
+  min-height: 2.4rem;
+}
+
+.ghost-button.compact.active {
+  color: var(--primary);
+  background: var(--chip);
+  border-color: var(--primary);
 }
 
 .posts-grid,
@@ -665,6 +707,22 @@ p {
 .post-author h3 {
   margin-bottom: 0.15rem;
   font-size: 1rem;
+}
+
+.author-button {
+  display: block;
+  margin-bottom: 0.15rem;
+  padding: 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.author-button:hover {
+  color: var(--primary);
 }
 
 .post-author time,
@@ -1017,6 +1075,83 @@ p {
   overflow-y: auto;
 }
 
+.profile-dialog {
+  width: min(100%, 58rem);
+  max-height: min(90vh, 56rem);
+  overflow-y: auto;
+}
+
+.profile-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.profile-avatar {
+  flex: none;
+  width: 4.25rem;
+  height: 4.25rem;
+  object-fit: cover;
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+
+.profile-hero h2 {
+  margin-bottom: 0.25rem;
+}
+
+.profile-hero p {
+  margin-bottom: 0.6rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.profile-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.profile-metrics span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0 0.6rem;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.follow-button {
+  white-space: nowrap;
+}
+
+.follow-button.following {
+  background: var(--success);
+}
+
+.profile-posts {
+  min-width: 0;
+}
+
+.cluster-header.flat {
+  padding: 0 0 0.85rem;
+}
+
+.profile-row {
+  grid-auto-columns: minmax(18rem, 21rem);
+  padding-right: 0;
+}
+
+.compact-state {
+  min-height: 10rem;
+  box-shadow: none;
+}
+
 .modal-post {
   overflow: hidden;
   margin-bottom: 1rem;
@@ -1270,6 +1405,21 @@ p {
   .feed-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .feed-header-actions,
+  .feed-header-actions .ghost-button,
+  .feed-status {
+    width: 100%;
+  }
+
+  .profile-hero {
+    grid-template-columns: auto 1fr;
+  }
+
+  .follow-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .post-header {

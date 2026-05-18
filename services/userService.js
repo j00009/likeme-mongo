@@ -39,6 +39,11 @@ const sanitizeUser = (user) => {
     const json = user.toJSON ? user.toJSON() : { ...user };
     delete json.passwordHash;
     delete json.passwordSalt;
+    json.following = (json.following || []).map((followedUser) => {
+        if (!followedUser) return '';
+        if (followedUser._id) return followedUser._id.toString();
+        return followedUser.toString();
+    }).filter(Boolean);
     return json;
 };
 
@@ -201,6 +206,62 @@ const updateUser = (id, payload) => {
     return User.findByIdAndUpdate(id, update, { returnDocument: 'after', runValidators: true });
 };
 
+const updateCurrentUser = async (currentUser, payload) => {
+    const update = {};
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'nombre')) update.nombre = payload.nombre?.trim();
+    if (Object.prototype.hasOwnProperty.call(payload, 'avatar')) update.avatar = normalizeExternalUrl(payload.avatar);
+    if (Object.prototype.hasOwnProperty.call(payload, 'bio')) update.bio = payload.bio?.trim() || '';
+    if (Object.prototype.hasOwnProperty.call(payload, 'interests')) update.interests = normalizeTags(payload.interests);
+
+    const user = await User.findByIdAndUpdate(currentUser._id, update, { returnDocument: 'after', runValidators: true });
+    return sanitizeUser(user);
+};
+
+const followUser = async (currentUser, targetId) => {
+    if (!currentUser) {
+        const error = new Error('Debes iniciar sesion');
+        error.statusCode = 401;
+        throw error;
+    }
+
+    if (currentUser._id.toString() === targetId) {
+        const error = new Error('No puedes seguir tu propio perfil');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const target = await User.findById(targetId);
+    if (!target) return null;
+
+    const user = await User.findByIdAndUpdate(
+        currentUser._id,
+        { $addToSet: { following: target._id } },
+        { returnDocument: 'after', runValidators: true }
+    );
+
+    return sanitizeUser(user);
+};
+
+const unfollowUser = async (currentUser, targetId) => {
+    if (!currentUser) {
+        const error = new Error('Debes iniciar sesion');
+        error.statusCode = 401;
+        throw error;
+    }
+
+    const target = await User.findById(targetId);
+    if (!target) return null;
+
+    const user = await User.findByIdAndUpdate(
+        currentUser._id,
+        { $pull: { following: target._id } },
+        { returnDocument: 'after', runValidators: true }
+    );
+
+    return sanitizeUser(user);
+};
+
 const deleteUser = (id) => {
     return User.findByIdAndDelete(id);
 };
@@ -214,5 +275,8 @@ module.exports = {
     sanitizeUser,
     findOrCreateUser,
     updateUser,
+    updateCurrentUser,
+    followUser,
+    unfollowUser,
     deleteUser
 };

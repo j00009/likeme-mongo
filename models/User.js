@@ -35,6 +35,10 @@ const userSchema = new mongoose.Schema(
             lowercase: true,
             maxlength: [32, 'Cada interes puede tener maximo 32 caracteres']
         }],
+        following: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        }],
         role: {
             type: String,
             enum: ['user', 'admin'],
@@ -53,6 +57,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ interests: 1 });
+userSchema.index({ following: 1 });
 
 userSchema.set('toJSON', toJsonOptions);
 

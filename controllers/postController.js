@@ -10,6 +10,20 @@ const listPosts = async (req, res) => {
     res.json(posts);
 };
 
+const listFollowingPosts = async (req, res) => {
+    const posts = await postService.listFollowingPosts(req.user);
+    res.json(posts);
+};
+
+const listPostsByUser = async (req, res) => {
+    if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: 'ID de usuario invalido' });
+    }
+
+    const posts = await postService.listPostsByUser(req.params.id, req.user);
+    res.json(posts);
+};
+
 const listPostClusters = async (req, res) => {
     const clusters = await postService.listPostClusters(req.user);
     res.json(clusters);
@@ -87,6 +101,8 @@ const deletePost = async (req, res) => {
 
 module.exports = {
     listPosts,
+    listFollowingPosts,
+    listPostsByUser,
     listPostClusters,
     getPost,
     createPost,

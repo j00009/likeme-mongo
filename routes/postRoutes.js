@@ -7,6 +7,8 @@ const router = express.Router();
 
 router.get('/', optionalAuth, asyncHandler(postController.listPosts));
 router.get('/clusters', optionalAuth, asyncHandler(postController.listPostClusters));
+router.get('/following', requireAuth, asyncHandler(postController.listFollowingPosts));
+router.get('/user/:id', optionalAuth, asyncHandler(postController.listPostsByUser));
 router.get('/:id', asyncHandler(postController.getPost));
 router.post('/', requireAuth, asyncHandler(postController.createPost));
 router.put('/:id', requireAuth, asyncHandler(postController.updatePost));

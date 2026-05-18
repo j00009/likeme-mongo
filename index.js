@@ -28,6 +28,7 @@ app.get('/', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
+app.get('/api/posts/user/:id', optionalAuth, asyncHandler(postController.listPostsByUser));
 
 // Rutas legacy conservadas para no romper la funcionalidad original.
 app.get('/posts', optionalAuth, asyncHandler(postController.listPosts));

@@ -17,8 +17,33 @@ const postSchema = new mongoose.Schema(
         },
         url: {
             type: String,
-            required: [true, 'La URL de la imagen es obligatoria'],
+            trim: true,
+            default: ''
+        },
+        mediaUrl: {
+            type: String,
             trim: true
+        },
+        thumbnailUrl: {
+            type: String,
+            trim: true,
+            default: ''
+        },
+        type: {
+            type: String,
+            enum: ['image', 'video', 'reel', 'text'],
+            default: 'image'
+        },
+        tags: [{
+            type: String,
+            trim: true,
+            lowercase: true,
+            maxlength: [32, 'Cada tag puede tener maximo 32 caracteres']
+        }],
+        views: {
+            type: Number,
+            default: 0,
+            min: 0
         },
         descripcion: {
             type: String,
@@ -39,6 +64,9 @@ const postSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+postSchema.index({ tags: 1, createdAt: -1 });
+postSchema.index({ views: -1, likes: -1 });
 
 postSchema.set('toJSON', toJsonOptions);
 

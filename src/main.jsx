@@ -1,18 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
 const api = {
   posts: '/api/posts',
+  postClusters: '/api/posts/clusters',
   comments: '/api/comments',
   users: '/api/users',
 };
 
 const sessionStorageKey = 'likeme:session';
+const themeStorageKey = 'likeme:theme';
+const viewReportCooldownMs = 30 * 1000;
+const viewReportDelayMs = 1000;
+const viewReportCache = new Map();
 
 const emptyPost = {
   URL: '',
+  thumbnailUrl: '',
   descripcion: '',
+  type: 'image',
+  tags: '',
 };
 
 const emptyAuthForm = {
@@ -20,6 +28,8 @@ const emptyAuthForm = {
   email: '',
   password: '',
   avatar: '',
+  bio: '',
+  interests: '',
 };
 
 const getStoredSession = () => {
@@ -80,6 +90,75 @@ const formatDate = (date) => {
   }).format(new Date(date));
 };
 
+const getStoredTheme = () => {
+  try {
+    return localStorage.getItem(themeStorageKey) || 'light';
+  } catch (error) {
+    return 'light';
+  }
+};
+
+const splitTags = (value) => {
+  if (Array.isArray(value)) return value;
+  return String(value || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+};
+
+const normalizeUrlInput = (value) => {
+  const url = String(value || '').trim();
+  if (!url || url.startsWith('data:') || url.startsWith('/') || /^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+};
+
+const isDirectImageUrl = (url) => {
+  return /^data:image\//i.test(url) || /\.(apng|avif|gif|jpe?g|png|webp|svg)(\?.*)?$/i.test(url);
+};
+
+const isDirectVideoUrl = (url) => {
+  return /^data:video\//i.test(url) || /\.(m3u8|mov|mp4|mpeg|ogg|ogv|webm)(\?.*)?$/i.test(url);
+};
+
+const getYoutubeEmbedUrl = (url) => {
+  try {
+    const parsed = new URL(normalizeUrlInput(url));
+    const host = parsed.hostname.replace(/^www\./, '');
+
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id ? `https://www.youtube.com/embed/${id}` : '';
+    }
+
+    if (!['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) return '';
+
+    if (parsed.pathname.startsWith('/shorts/')) {
+      const id = parsed.pathname.split('/').filter(Boolean)[1];
+      return id ? `https://www.youtube.com/embed/${id}` : '';
+    }
+
+    if (parsed.pathname.startsWith('/embed/')) return parsed.href;
+
+    const id = parsed.searchParams.get('v');
+    return id ? `https://www.youtube.com/embed/${id}` : '';
+  } catch (error) {
+    return '';
+  }
+};
+
+const getInstagramEmbedUrl = (url) => {
+  try {
+    const parsed = new URL(normalizeUrlInput(url));
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (!['instagram.com', 'm.instagram.com'].includes(host)) return '';
+
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const embedTypes = ['p', 'reel', 'tv'];
+    if (!embedTypes.includes(parts[0]) || !parts[1]) return '';
+
+    return `https://www.instagram.com/${parts[0]}/${parts[1]}/embed`;
+  } catch (error) {
+    return '';
+  }
+};
+
 const request = async (url, options = {}, token = '') => {
   const response = await fetch(url, {
     headers: {
@@ -101,6 +180,7 @@ const request = async (url, options = {}, token = '') => {
 
 function App() {
   const [posts, setPosts] = useState([]);
+  const [clusters, setClusters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -108,23 +188,52 @@ function App() {
   const [commentsTarget, setCommentsTarget] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [session, setSession] = useState(getStoredSession);
+  const [theme, setTheme] = useState(getStoredTheme);
 
   const currentUser = session?.user || null;
   const authToken = session?.token || '';
+  const isDarkMode = theme === 'dark';
 
   const stats = useMemo(() => ({
     posts: posts.length,
     likes: posts.reduce((total, post) => total + (post.likes || 0), 0),
     comments: posts.reduce((total, post) => total + (post.comentarios?.length || 0), 0),
+    views: posts.reduce((total, post) => total + (post.views || 0), 0),
   }), [posts]);
 
   const notify = (message, type = 'success') => {
     setToast({ message, type, id: Date.now() });
   };
 
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  };
+
   const saveSession = (nextSession) => {
     localStorage.setItem(sessionStorageKey, JSON.stringify(nextSession));
     setSession(nextSession);
+  };
+
+  const replacePostInState = (updatedPost) => {
+    setPosts((current) => current.map((post) => (post.id === updatedPost.id ? updatedPost : post)));
+    setClusters((current) => current.map((cluster) => ({
+      ...cluster,
+      posts: (cluster.posts || []).map((post) => (post.id === updatedPost.id ? updatedPost : post)),
+    })));
+  };
+
+  const removePostFromState = (postId) => {
+    setPosts((current) => current.filter((post) => post.id !== postId));
+    setClusters((current) => current
+      .map((cluster) => {
+        const hadPost = (cluster.posts || []).some((post) => post.id === postId);
+        return {
+          ...cluster,
+          posts: (cluster.posts || []).filter((post) => post.id !== postId),
+          totalPosts: hadPost ? Math.max(0, (cluster.totalPosts || 0) - 1) : cluster.totalPosts,
+        };
+      })
+      .filter((cluster) => cluster.posts.length > 0));
   };
 
   const logout = () => {
@@ -164,8 +273,13 @@ function App() {
     setLoading(true);
 
     try {
-      const data = await request(api.posts);
-      setPosts(data);
+      const data = await request(api.postClusters, {}, authToken);
+      setClusters(data);
+      const uniquePosts = new Map();
+      data.forEach((cluster) => {
+        (cluster.posts || []).forEach((post) => uniquePosts.set(post.id, post));
+      });
+      setPosts([...uniquePosts.values()]);
     } catch (error) {
       notify(error.message || 'No se pudieron cargar los posts', 'error');
     } finally {
@@ -175,7 +289,12 @@ function App() {
 
   useEffect(() => {
     loadPosts();
-  }, []);
+  }, [authToken]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -184,12 +303,12 @@ function App() {
   }, [toast]);
 
   const createPost = async (payload) => {
-    const data = await request(api.posts, {
+    await request(api.posts, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, authToken);
 
-    setPosts((current) => [data, ...current]);
+    await loadPosts();
     notify('Publicacion creada');
   };
 
@@ -199,21 +318,26 @@ function App() {
       body: JSON.stringify(payload),
     }, authToken);
 
-    setPosts((current) => current.map((post) => (post.id === id ? data : post)));
+    replacePostInState(data);
     setEditTarget(null);
     notify('Publicacion actualizada');
   };
 
   const likePost = async (id) => {
-    const data = await request(`${api.posts}/${id}/like`, { method: 'PATCH' });
-    setPosts((current) => current.map((post) => (post.id === id ? data : post)));
+    const data = await request(`${api.posts}/${id}/like`, { method: 'PATCH' }, authToken);
+    replacePostInState(data);
+  };
+
+  const viewPost = async (id) => {
+    const data = await request(`${api.posts}/${id}/view`, { method: 'PATCH' }, authToken);
+    replacePostInState(data);
   };
 
   const deletePost = async () => {
     if (!deleteTarget) return;
 
     await request(`${api.posts}/${deleteTarget.id}`, { method: 'DELETE' }, authToken);
-    setPosts((current) => current.filter((post) => post.id !== deleteTarget.id));
+    removePostFromState(deleteTarget.id);
     setDeleteTarget(null);
     notify('Publicacion eliminada');
   };
@@ -224,27 +348,39 @@ function App() {
       body: JSON.stringify(payload),
     }, authToken);
 
-    setPosts((current) => current.map((post) => {
+    const addComment = (post) => {
       if (post.id !== payload.post) return post;
 
       return {
         ...post,
         comentarios: [...(post.comentarios || []), data],
       };
-    }));
+    };
+
+    setPosts((current) => current.map(addComment));
+    setClusters((current) => current.map((cluster) => ({
+      ...cluster,
+      posts: (cluster.posts || []).map(addComment),
+    })));
     notify('Comentario agregado');
   };
 
   const deleteComment = async (postId, commentId) => {
     await request(`${api.comments}/${commentId}`, { method: 'DELETE' }, authToken);
-    setPosts((current) => current.map((post) => {
+    const removeComment = (post) => {
       if (post.id !== postId) return post;
 
       return {
         ...post,
         comentarios: (post.comentarios || []).filter((comment) => comment.id !== commentId),
       };
-    }));
+    };
+
+    setPosts((current) => current.map(removeComment));
+    setClusters((current) => current.map((cluster) => ({
+      ...cluster,
+      posts: (cluster.posts || []).map(removeComment),
+    })));
     notify('Comentario eliminado');
   };
 
@@ -259,7 +395,12 @@ function App() {
 
   return (
     <>
-      <Navbar onRefresh={loadPosts} onOpenComposer={() => setComposerOpen(true)} />
+      <Navbar
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+        onRefresh={loadPosts}
+        onOpenComposer={() => setComposerOpen(true)}
+      />
       <main className="app-shell">
         <Sidebar
           stats={stats}
@@ -270,9 +411,15 @@ function App() {
         />
         <Feed
           posts={posts}
+          clusters={clusters}
           loading={loading}
           currentUser={currentUser}
-          onLike={(id) => guardedAction(() => likePost(id), 'No se pudo dar like')}
+          onLike={(id) => guardedAction(async () => {
+            if (!ensureSession()) return false;
+            await likePost(id);
+            return true;
+          }, 'No se pudo dar like')}
+          onView={(id) => guardedAction(() => viewPost(id), 'No se pudo registrar la vista')}
           onEdit={setEditTarget}
           onDelete={setDeleteTarget}
           onOpenComments={setCommentsTarget}
@@ -331,14 +478,21 @@ function App() {
   );
 }
 
-function Navbar({ onRefresh, onOpenComposer }) {
+function Navbar({ isDarkMode, onToggleTheme, onRefresh, onOpenComposer }) {
   return (
     <nav className="topbar">
       <a className="brand" href="/">
         <span className="brand-mark"><i className="bi bi-heart-fill" /></span>
         <span>Like Me</span>
+        <small>Clusters</small>
       </a>
       <div className="topbar-actions">
+        <button className="theme-toggle" type="button" onClick={onToggleTheme} title="Cambiar tema">
+          <span className="theme-toggle-track">
+            <i className={`bi ${isDarkMode ? 'bi-moon-stars-fill' : 'bi-sun-fill'}`} />
+          </span>
+          <span>{isDarkMode ? 'Dark' : 'Light'}</span>
+        </button>
         <button className="icon-button" type="button" title="Recargar feed" onClick={onRefresh}>
           <i className="bi bi-arrow-clockwise" />
         </button>
@@ -358,6 +512,7 @@ function Sidebar({ stats, currentUser, onLogin, onRegister, onLogout }) {
       <section className="stats-panel" aria-label="Resumen">
         <Stat value={stats.posts} label="posts" />
         <Stat value={stats.likes} label="likes" />
+        <Stat value={stats.views} label="views" />
         <Stat value={stats.comments} label="comentarios" />
       </section>
     </aside>
@@ -374,7 +529,9 @@ function PostComposerDialog({ onCancel, onCreate }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const dataUrl = await normalizeImageFile(file);
+    const dataUrl = file.type.startsWith('image/')
+      ? await normalizeImageFile(file)
+      : await fileToDataUrl(file);
     updateField('URL', dataUrl);
   };
 
@@ -383,7 +540,13 @@ function PostComposerDialog({ onCancel, onCreate }) {
     setSubmitting(true);
 
     try {
-      const created = await onCreate(form);
+      const created = await onCreate({
+        ...form,
+        URL: normalizeUrlInput(form.URL),
+        mediaUrl: normalizeUrlInput(form.URL),
+        thumbnailUrl: normalizeUrlInput(form.thumbnailUrl),
+        tags: splitTags(form.tags),
+      });
       if (created !== false) setForm(emptyPost);
     } finally {
       setSubmitting(false);
@@ -405,16 +568,33 @@ function PostComposerDialog({ onCancel, onCreate }) {
 
         <form className="composer-form" onSubmit={handleSubmit}>
           <label>
-            URL de imagen
-            <input id="post-url" type="url" value={form.URL} onChange={(event) => updateField('URL', event.target.value)} placeholder="https://..." required />
+            Tipo de contenido
+            <select value={form.type} onChange={(event) => updateField('type', event.target.value)}>
+              <option value="image">Imagen</option>
+              <option value="video">Video</option>
+              <option value="reel">Reel</option>
+              <option value="text">Texto</option>
+            </select>
+          </label>
+          <label>
+            URL multimedia
+            <input id="post-url" type="text" value={form.URL} onChange={(event) => updateField('URL', event.target.value)} placeholder="https://youtube.com/shorts/... o https://sitio.com/video.mp4" required={form.type !== 'text'} />
           </label>
           <label className="file-picker">
-            <span>Imagen desde tu computador</span>
-            <input className="file-input" type="file" accept="image/*" onChange={handleImageFile} />
+            <span>Archivo desde tu computador</span>
+            <input className="file-input" type="file" accept="image/*,video/*" onChange={handleImageFile} />
+          </label>
+          <label>
+            Thumbnail opcional
+            <input type="text" value={form.thumbnailUrl} onChange={(event) => updateField('thumbnailUrl', event.target.value)} placeholder="https://..." />
+          </label>
+          <label>
+            Tags
+            <input type="text" value={form.tags} onChange={(event) => updateField('tags', event.target.value)} placeholder="mongo, reels, viajes" />
           </label>
           {form.URL && (
             <div className="image-preview">
-              <img src={form.URL} alt="Vista previa de la publicacion" />
+              <MediaPreview post={{ mediaUrl: form.URL, thumbnailUrl: form.thumbnailUrl, type: form.type, descripcion: form.descripcion }} />
             </div>
           )}
           <label>
@@ -457,7 +637,11 @@ function AuthCard({ currentUser, onLogin, onRegister, onLogout }) {
 
     try {
       const action = isRegister ? onRegister : onLogin;
-      const result = await action(form);
+      const result = await action({
+        ...form,
+        avatar: normalizeUrlInput(form.avatar),
+        interests: splitTags(form.interests),
+      });
       if (result !== false) setForm(emptyAuthForm);
     } finally {
       setSubmitting(false);
@@ -465,21 +649,20 @@ function AuthCard({ currentUser, onLogin, onRegister, onLogout }) {
   };
 
   if (currentUser) {
-    const initial = currentUser.nombre?.trim().charAt(0).toUpperCase() || 'U';
-
     return (
       <section className="profile-card">
         <div className="profile-preview">
-          {currentUser.avatar ? (
-            <img src={currentUser.avatar} alt="" className="avatar" />
-          ) : (
-            <div className="avatar avatar-fallback">{initial}</div>
-          )}
+          <Avatar src={currentUser.avatar} name={currentUser.nombre} className="avatar" />
           <div>
             <span className="eyebrow">Sesion activa</span>
             <h2>{currentUser.nombre}</h2>
             <p>{currentUser.email}</p>
+            {currentUser.bio && <p>{currentUser.bio}</p>}
           </div>
+        </div>
+        <div className="tag-list profile-tags">
+          <span className="type-chip">{currentUser.role || 'user'}</span>
+          {(currentUser.interests || []).map((tag) => <span key={tag}>#{tag}</span>)}
         </div>
         <button className="ghost-button profile-save" type="button" onClick={onLogout}>
           <i className="bi bi-box-arrow-right" />
@@ -524,7 +707,15 @@ function AuthCard({ currentUser, onLogin, onRegister, onLogout }) {
           <>
             <label>
               Avatar
-              <input type="url" value={form.avatar} onChange={(event) => updateField('avatar', event.target.value)} placeholder="https://..." />
+              <input type="text" value={form.avatar} onChange={(event) => updateField('avatar', event.target.value)} placeholder="https://..." />
+            </label>
+            <label>
+              Bio
+              <textarea value={form.bio} onChange={(event) => updateField('bio', event.target.value)} rows="3" placeholder="Perfil breve" maxLength="180" />
+            </label>
+            <label>
+              Intereses
+              <input type="text" value={form.interests} onChange={(event) => updateField('interests', event.target.value)} placeholder="mongo, musica, videos" />
             </label>
             <label className="file-picker">
               <span>Avatar desde tu computador</span>
@@ -550,21 +741,27 @@ function Stat({ value, label }) {
   );
 }
 
-function Feed({ posts, loading, currentUser, onLike, onEdit, onDelete, onOpenComments, onComment, onDeleteComment }) {
+function Feed({ posts, clusters, loading, currentUser, onLike, onView, onEdit, onDelete, onOpenComments, onComment, onDeleteComment }) {
   return (
-    <section className="feed-section" aria-label="Feed principal">
+    <section className="feed-section clustered-feed" aria-label="Feed por clusters">
       <div className="feed-header">
         <div>
-          <span className="eyebrow">Feed</span>
-          <h2>Publicaciones recientes</h2>
+          <span className="eyebrow">Clusters dinamicos</span>
+          <h2>{currentUser ? 'Explora segun tus intereses' : 'Explora por tags'}</h2>
         </div>
         <div className="feed-status">{loading ? 'Cargando...' : 'Sincronizado'}</div>
       </div>
 
       {loading && (
-        <div className="loading-grid">
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
+        <div className="cluster-list">
+          <div className="cluster-shell">
+            <div className="cluster-header skeleton-line" />
+            <div className="cluster-row">
+              <div className="skeleton-card compact" />
+              <div className="skeleton-card compact" />
+              <div className="skeleton-card compact" />
+            </div>
+          </div>
         </div>
       )}
 
@@ -577,19 +774,37 @@ function Feed({ posts, loading, currentUser, onLike, onEdit, onDelete, onOpenCom
       )}
 
       {!loading && posts.length > 0 && (
-        <div className="posts-grid">
-          {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              currentUser={currentUser}
-              onLike={onLike}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onOpenComments={onOpenComments}
-              onComment={onComment}
-              onDeleteComment={onDeleteComment}
-            />
+        <div className="cluster-list">
+          {clusters.map((cluster) => (
+            <section className="cluster-shell" key={cluster.tag}>
+              <div className="cluster-header">
+                <div>
+                  <span className="eyebrow">{cluster.recommended ? 'Recomendado' : 'Tag activo'}</span>
+                  <h3>{cluster.title}</h3>
+                </div>
+                <div className="cluster-meta">
+                  <span>{cluster.totalPosts} posts</span>
+                  <span>{cluster.totalLikes || 0} likes</span>
+                  <span>{cluster.totalViews || 0} views</span>
+                </div>
+              </div>
+              <div className="cluster-row" aria-label={`Posts del cluster ${cluster.tag}`}>
+                {(cluster.posts || []).map((post) => (
+                  <PostCard
+                    key={`${cluster.tag}-${post.id}`}
+                    post={post}
+                    currentUser={currentUser}
+                    onLike={onLike}
+                    onView={onView}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onOpenComments={onOpenComments}
+                    onComment={onComment}
+                    onDeleteComment={onDeleteComment}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
@@ -597,18 +812,57 @@ function Feed({ posts, loading, currentUser, onLike, onEdit, onDelete, onOpenCom
   );
 }
 
-function PostCard({ post, currentUser, onLike, onEdit, onDelete, onOpenComments, onComment, onDeleteComment }) {
+function PostCard({ post, currentUser, onLike, onView, onEdit, onDelete, onOpenComments, onComment, onDeleteComment }) {
   const comments = post.comentarios || [];
   const previewComments = comments.slice(-2);
   const user = post.usuario || post.autorNombre || 'Usuario';
   const avatar = post.avatar || post.autor?.avatar || '';
   const canManagePost = currentUser?.id && post.ownerId === currentUser.id;
+  const articleRef = useRef(null);
+
+  useEffect(() => {
+    const element = articleRef.current;
+    if (!element || !currentUser?.id) return undefined;
+
+    let viewTimer = null;
+
+    const clearViewTimer = () => {
+      if (viewTimer) {
+        clearTimeout(viewTimer);
+        viewTimer = null;
+      }
+    };
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting || entry.intersectionRatio < 0.6) {
+        clearViewTimer();
+        return;
+      }
+
+      clearViewTimer();
+      viewTimer = setTimeout(() => {
+        const cacheKey = `${currentUser.id}:${post.id}`;
+        const lastReport = viewReportCache.get(cacheKey) || 0;
+        if (Date.now() - lastReport < viewReportCooldownMs) return;
+
+        viewReportCache.set(cacheKey, Date.now());
+        onView(post.id);
+      }, viewReportDelayMs);
+    }, { threshold: [0, 0.6, 1] });
+
+    observer.observe(element);
+
+    return () => {
+      clearViewTimer();
+      observer.disconnect();
+    };
+  }, [currentUser?.id, post.id, onView]);
 
   return (
-    <article className="post-card">
+    <article className="post-card" ref={articleRef}>
       <header className="post-header">
         <div className="post-author">
-          <img src={avatar} alt="" className="avatar" />
+          <Avatar src={avatar} name={user} className="avatar" />
           <div>
             <h3>{user}</h3>
             <time>{formatDate(post.createdAt || Date.now())}</time>
@@ -626,18 +880,32 @@ function PostCard({ post, currentUser, onLike, onEdit, onDelete, onOpenComments,
         )}
       </header>
 
-      <img className="post-image" src={post.url} alt={post.descripcion} />
+      <MediaPreview post={post} />
 
       <div className="post-content">
         <p>{post.descripcion}</p>
+        <div className="tag-list">
+          <span className="type-chip">{post.type || 'image'}</span>
+          {(post.tags || []).map((tag) => <span key={tag}>#{tag}</span>)}
+        </div>
         <div className="post-actions">
-          <button className="like-button" type="button" onClick={() => onLike(post.id)}>
+          <button
+            className={`like-button ${post.likedByCurrentUser ? 'liked' : ''}`}
+            type="button"
+            onClick={() => onLike(post.id)}
+            disabled={Boolean(post.likedByCurrentUser)}
+            title={post.likedByCurrentUser ? 'Ya diste like' : 'Dar like'}
+          >
             <i className="bi bi-heart-fill" />
             <span>{post.likes || 0}</span>
           </button>
           <span className="comment-count">
             <i className="bi bi-chat-dots" />
             {comments.length}
+          </span>
+          <span className="comment-count">
+            <i className="bi bi-eye" />
+            {post.views || 0}
           </span>
         </div>
       </div>
@@ -656,6 +924,146 @@ function PostCard({ post, currentUser, onLike, onEdit, onDelete, onOpenComments,
         <CommentForm postId={post.id} onComment={onComment} />
       </section>
     </article>
+  );
+}
+
+function Avatar({ src, name, className }) {
+  const [failed, setFailed] = useState(false);
+  const initial = name?.trim().charAt(0).toUpperCase() || 'U';
+  const normalizedSrc = normalizeUrlInput(src);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [normalizedSrc]);
+
+  if (!normalizedSrc || failed) {
+    return <div className={`${className} avatar-fallback`}>{initial}</div>;
+  }
+
+  return (
+    <img
+      src={normalizedSrc}
+      alt=""
+      className={className}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function MediaPreview({ post }) {
+  const mediaUrl = normalizeUrlInput(post.mediaUrl || post.url || '');
+  const type = post.type || (mediaUrl ? 'image' : 'text');
+  const youtubeEmbedUrl = getYoutubeEmbedUrl(mediaUrl);
+  const instagramEmbedUrl = getInstagramEmbedUrl(mediaUrl);
+
+  if (type === 'text' || !mediaUrl) {
+    return (
+      <div className="text-post-media">
+        <i className="bi bi-card-text" />
+        <span>{post.descripcion}</span>
+      </div>
+    );
+  }
+
+  if (youtubeEmbedUrl) {
+    return (
+      <div className={`embed-frame ${type === 'reel' ? 'reel-frame' : ''}`}>
+        <iframe
+          src={youtubeEmbedUrl}
+          title={post.descripcion || 'Contenido de YouTube'}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+        <span className="media-badge">
+          <i className="bi bi-youtube" />
+          youtube
+        </span>
+      </div>
+    );
+  }
+
+  if (instagramEmbedUrl) {
+    return (
+      <div className={`embed-frame instagram-frame ${type === 'reel' ? 'reel-frame' : ''}`}>
+        <iframe
+          src={instagramEmbedUrl}
+          title={post.descripcion || 'Contenido de Instagram'}
+          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+          allowFullScreen
+        />
+        <span className="media-badge">
+          <i className="bi bi-instagram" />
+          instagram
+        </span>
+      </div>
+    );
+  }
+
+  if (type === 'video' || type === 'reel') {
+    if (!isDirectVideoUrl(mediaUrl)) {
+      return <ExternalMediaLink url={mediaUrl} type={type} title={post.descripcion} thumbnailUrl={post.thumbnailUrl} />;
+    }
+
+    return (
+      <div className={`video-frame ${type === 'reel' ? 'reel-frame' : ''}`}>
+        <video className="post-image" src={mediaUrl} poster={post.thumbnailUrl || undefined} controls muted playsInline />
+        <span className="media-badge">
+          <i className={`bi ${type === 'reel' ? 'bi-phone' : 'bi-play-btn'}`} />
+          {type}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <RemoteImage
+      src={mediaUrl}
+      alt={post.descripcion}
+      fallback={<ExternalMediaLink url={mediaUrl} type={type} title={post.descripcion} thumbnailUrl={post.thumbnailUrl} />}
+    />
+  );
+}
+
+function ExternalMediaLink({ url, type, title, thumbnailUrl }) {
+  const normalizedUrl = normalizeUrlInput(url);
+  const normalizedThumbnail = normalizeUrlInput(thumbnailUrl);
+
+  return (
+    <a className="external-media-card" href={normalizedUrl} target="_blank" rel="noreferrer">
+      {normalizedThumbnail && isDirectImageUrl(normalizedThumbnail) ? (
+        <img src={normalizedThumbnail} alt="" referrerPolicy="no-referrer" />
+      ) : (
+        <i className="bi bi-box-arrow-up-right" />
+      )}
+      <span className="media-badge">
+        <i className="bi bi-link-45deg" />
+        {type}
+      </span>
+      <strong>{title || 'Abrir contenido externo'}</strong>
+      <small>{normalizedUrl}</small>
+    </a>
+  );
+}
+
+function RemoteImage({ src, alt, fallback }) {
+  const [failed, setFailed] = useState(false);
+  const normalizedSrc = normalizeUrlInput(src);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [normalizedSrc]);
+
+  if (!normalizedSrc || failed) return fallback;
+
+  return (
+    <img
+      className="post-image"
+      src={normalizedSrc}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -680,16 +1088,20 @@ function CommentsDialog({ post, currentUser, onCancel, onComment, onDeleteCommen
         <article className="modal-post">
           <header className="post-header">
             <div className="post-author">
-              <img src={avatar} alt="" className="avatar" />
+              <Avatar src={avatar} name={user} className="avatar" />
               <div>
                 <h3>{user}</h3>
                 <time>{formatDate(post.createdAt || Date.now())}</time>
               </div>
             </div>
           </header>
-          <img className="post-image" src={post.url} alt={post.descripcion} />
+          <MediaPreview post={post} />
           <div className="post-content">
             <p>{post.descripcion}</p>
+            <div className="tag-list">
+              <span className="type-chip">{post.type || 'image'}</span>
+              {(post.tags || []).map((tag) => <span key={tag}>#{tag}</span>)}
+            </div>
           </div>
         </article>
 
@@ -717,7 +1129,7 @@ function CommentItem({ postId, comment, currentUser, onDelete }) {
 
   return (
     <li className="comment-item">
-      <img src={avatar} alt="" className="mini-avatar" />
+      <Avatar src={avatar} name={user} className="mini-avatar" />
       <div>
         <strong>{user}</strong>
         <p>{comment.texto}</p>
@@ -780,7 +1192,10 @@ function ConfirmDialog({ title, message, onCancel, onAccept }) {
 function EditDialog({ post, onCancel, onSave }) {
   const [form, setForm] = useState({
     url: post.url || '',
+    thumbnailUrl: post.thumbnailUrl || '',
     descripcion: post.descripcion || '',
+    type: post.type || 'image',
+    tags: (post.tags || []).join(', '),
   });
 
   const updateField = (field, value) => setForm((current) => ({ ...current, [field]: value }));
@@ -789,13 +1204,21 @@ function EditDialog({ post, onCancel, onSave }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const dataUrl = await normalizeImageFile(file);
+    const dataUrl = file.type.startsWith('image/')
+      ? await normalizeImageFile(file)
+      : await fileToDataUrl(file);
     updateField('url', dataUrl);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    await onSave(post.id, form);
+    await onSave(post.id, {
+      ...form,
+      url: normalizeUrlInput(form.url),
+      mediaUrl: normalizeUrlInput(form.url),
+      thumbnailUrl: normalizeUrlInput(form.thumbnailUrl),
+      tags: splitTags(form.tags),
+    });
   };
 
   return (
@@ -804,12 +1227,29 @@ function EditDialog({ post, onCancel, onSave }) {
         <h3>Editar publicacion</h3>
         <form className="composer-form" onSubmit={handleSubmit}>
           <label>
-            URL de imagen
-            <input value={form.url} onChange={(event) => updateField('url', event.target.value)} type="url" required />
+            Tipo de contenido
+            <select value={form.type} onChange={(event) => updateField('type', event.target.value)}>
+              <option value="image">Imagen</option>
+              <option value="video">Video</option>
+              <option value="reel">Reel</option>
+              <option value="text">Texto</option>
+            </select>
+          </label>
+          <label>
+            URL multimedia
+            <input value={form.url} onChange={(event) => updateField('url', event.target.value)} type="text" required={form.type !== 'text'} />
           </label>
           <label className="file-picker">
-            <span>Imagen desde tu computador</span>
-            <input className="file-input" type="file" accept="image/*" onChange={handleImageFile} />
+            <span>Archivo desde tu computador</span>
+            <input className="file-input" type="file" accept="image/*,video/*" onChange={handleImageFile} />
+          </label>
+          <label>
+            Thumbnail opcional
+            <input value={form.thumbnailUrl} onChange={(event) => updateField('thumbnailUrl', event.target.value)} type="text" />
+          </label>
+          <label>
+            Tags
+            <input value={form.tags} onChange={(event) => updateField('tags', event.target.value)} type="text" placeholder="mongo, reels, datos" />
           </label>
           <label>
             Descripcion

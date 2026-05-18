@@ -1,6 +1,7 @@
 const Comment = require('../models/Comment');
 const Post = require('../models/Post');
 const { findOrCreateUser } = require('./userService');
+const { recordInteraction } = require('./postService');
 
 const populateComment = (query) => {
     return query
@@ -55,6 +56,7 @@ const createComment = async (payload, currentUser) => {
 
     post.comentarios.push(comment._id);
     await post.save();
+    await recordInteraction(post, user, 'comment', { comment: comment._id });
 
     return getCommentById(comment._id);
 };
@@ -77,7 +79,7 @@ const updateComment = async (id, payload, currentUser) => {
     await Comment.findByIdAndUpdate(
         id,
         { texto: payload.texto },
-        { new: true, runValidators: true }
+        { returnDocument: 'after', runValidators: true }
     );
 
     return getCommentById(id);

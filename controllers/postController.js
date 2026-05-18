@@ -2,12 +2,17 @@ const postService = require('../services/postService');
 const { isValidObjectId } = require('../utils/validators');
 
 const hasPostPayload = (body) => {
-    return Boolean((body.URL || body.url) && body.descripcion);
+    return Boolean(body.descripcion && (body.type === 'text' || body.URL || body.url || body.mediaUrl));
 };
 
 const listPosts = async (req, res) => {
-    const posts = await postService.listPosts();
+    const posts = await postService.listPosts(req.user);
     res.json(posts);
+};
+
+const listPostClusters = async (req, res) => {
+    const clusters = await postService.listPostClusters(req.user);
+    res.json(clusters);
 };
 
 const getPost = async (req, res) => {
@@ -23,7 +28,7 @@ const getPost = async (req, res) => {
 
 const createPost = async (req, res) => {
     if (!hasPostPayload(req.body)) {
-        return res.status(400).json({ error: 'URL y descripcion son obligatorios' });
+        return res.status(400).json({ error: 'Descripcion y contenido multimedia son obligatorios, salvo posts de texto' });
     }
 
     const post = await postService.createPost(req.body, req.user);
@@ -48,7 +53,20 @@ const likePost = async (req, res) => {
         return res.status(400).json({ error: 'ID de post invalido' });
     }
 
-    const post = await postService.likePost(id);
+    const post = await postService.likePost(id, req.user);
+    if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+
+    res.json(post);
+};
+
+const viewPost = async (req, res) => {
+    const id = req.params.id || req.query.id;
+
+    if (!id || !isValidObjectId(id)) {
+        return res.status(400).json({ error: 'ID de post invalido' });
+    }
+
+    const post = await postService.viewPost(id, req.user);
     if (!post) return res.status(404).json({ error: 'Post no encontrado' });
 
     res.json(post);
@@ -69,9 +87,11 @@ const deletePost = async (req, res) => {
 
 module.exports = {
     listPosts,
+    listPostClusters,
     getPost,
     createPost,
     updatePost,
     likePost,
+    viewPost,
     deletePost
 };

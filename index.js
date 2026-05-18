@@ -5,7 +5,7 @@ require('dotenv').config();
 const connectDatabase = require('./config/database');
 const errorHandler = require('./middlewares/errorHandler');
 const asyncHandler = require('./middlewares/asyncHandler');
-const { requireAuth } = require('./middlewares/auth');
+const { optionalAuth, requireAuth } = require('./middlewares/auth');
 const postController = require('./controllers/postController');
 const userRoutes = require('./routes/userRoutes');
 const postRoutes = require('./routes/postRoutes');
@@ -30,9 +30,9 @@ app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
 
 // Rutas legacy conservadas para no romper la funcionalidad original.
-app.get('/posts', asyncHandler(postController.listPosts));
+app.get('/posts', optionalAuth, asyncHandler(postController.listPosts));
 app.post('/post', requireAuth, asyncHandler(postController.createPost));
-app.put('/post', asyncHandler(postController.likePost));
+app.put('/post', requireAuth, asyncHandler(postController.likePost));
 app.delete('/post-eliminar', requireAuth, asyncHandler(postController.deletePost));
 
 app.use((req, res) => {

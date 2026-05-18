@@ -7,6 +7,23 @@ const avatarFor = (name) => {
     return `https://api.dicebear.com/8.x/initials/svg?seed=${encoded}&backgroundColor=2563eb,14b8a6,f97316,ec4899`;
 };
 
+const normalizeTags = (value) => {
+    const rawTags = Array.isArray(value)
+        ? value
+        : String(value || '').split(',');
+
+    return [...new Set(rawTags
+        .map((tag) => tag.toString().trim().toLowerCase().replace(/^#/, ''))
+        .filter(Boolean))]
+        .slice(0, 12);
+};
+
+const normalizeExternalUrl = (value) => {
+    const url = value?.toString?.().trim() || '';
+    if (!url || url.startsWith('data:') || url.startsWith('/') || /^https?:\/\//i.test(url)) return url;
+    return `https://${url}`;
+};
+
 const slugify = (value) => {
     return value
         .normalize('NFD')
@@ -47,7 +64,7 @@ const getUserById = (id) => {
 const createUser = async (payload) => {
     const nombre = payload.nombre?.trim();
     const email = payload.email?.trim().toLowerCase() || `${slugify(nombre || 'usuario')}@likeme.local`;
-    const avatar = payload.avatar?.trim() || avatarFor(nombre || email || 'Like Me');
+    const avatar = normalizeExternalUrl(payload.avatar) || avatarFor(nombre || email || 'Like Me');
     const credentials = payload.password ? hashPassword(payload.password) : {};
 
     try {
@@ -55,6 +72,9 @@ const createUser = async (payload) => {
             nombre,
             email,
             avatar,
+            bio: payload.bio?.trim() || '',
+            interests: normalizeTags(payload.interests),
+            role: payload.role === 'admin' ? 'admin' : 'user',
             passwordHash: credentials.hash,
             passwordSalt: credentials.salt
         });
@@ -102,7 +122,11 @@ const registerUser = async (payload) => {
     if (existing) {
         const credentials = hashPassword(password);
         existing.nombre = nombre;
-        existing.avatar = payload.avatar?.trim() || existing.avatar || avatarFor(nombre);
+        existing.avatar = normalizeExternalUrl(payload.avatar) || existing.avatar || avatarFor(nombre);
+        existing.bio = payload.bio?.trim() || existing.bio || '';
+        existing.interests = normalizeTags(payload.interests).length
+            ? normalizeTags(payload.interests)
+            : existing.interests;
         existing.passwordHash = credentials.hash;
         existing.passwordSalt = credentials.salt;
         await existing.save();
@@ -156,8 +180,8 @@ const findOrCreateUser = async ({ nombre, email, avatar }) => {
             email: normalizedEmail,
             avatar
         });
-    } else if (avatar && user.avatar !== avatar) {
-        user.avatar = avatar;
+    } else if (avatar && user.avatar !== normalizeExternalUrl(avatar)) {
+        user.avatar = normalizeExternalUrl(avatar);
         await user.save();
     }
 
@@ -165,15 +189,16 @@ const findOrCreateUser = async ({ nombre, email, avatar }) => {
 };
 
 const updateUser = (id, payload) => {
-    return User.findByIdAndUpdate(
-        id,
-        {
-            nombre: payload.nombre,
-            email: payload.email,
-            avatar: payload.avatar
-        },
-        { new: true, runValidators: true }
-    );
+    const update = {};
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'nombre')) update.nombre = payload.nombre;
+    if (Object.prototype.hasOwnProperty.call(payload, 'email')) update.email = payload.email;
+    if (Object.prototype.hasOwnProperty.call(payload, 'avatar')) update.avatar = normalizeExternalUrl(payload.avatar);
+    if (Object.prototype.hasOwnProperty.call(payload, 'bio')) update.bio = payload.bio;
+    if (Object.prototype.hasOwnProperty.call(payload, 'interests')) update.interests = normalizeTags(payload.interests);
+    if (payload.role === 'admin' || payload.role === 'user') update.role = payload.role;
+
+    return User.findByIdAndUpdate(id, update, { returnDocument: 'after', runValidators: true });
 };
 
 const deleteUser = (id) => {

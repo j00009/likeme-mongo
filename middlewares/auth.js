@@ -19,6 +19,19 @@ const requireAuth = async (req, res, next) => {
     next();
 };
 
+const optionalAuth = async (req, res, next) => {
+    const header = req.get('authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    const payload = verifyToken(token);
+
+    if (payload?.id) {
+        req.user = await User.findById(payload.id);
+    }
+
+    next();
+};
+
 module.exports = {
-    requireAuth
+    requireAuth,
+    optionalAuth
 };

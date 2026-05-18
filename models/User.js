@@ -23,6 +23,23 @@ const userSchema = new mongoose.Schema(
             trim: true,
             default: ''
         },
+        bio: {
+            type: String,
+            trim: true,
+            maxlength: [180, 'La bio no puede superar 180 caracteres'],
+            default: ''
+        },
+        interests: [{
+            type: String,
+            trim: true,
+            lowercase: true,
+            maxlength: [32, 'Cada interes puede tener maximo 32 caracteres']
+        }],
+        role: {
+            type: String,
+            enum: ['user', 'admin'],
+            default: 'user'
+        },
         passwordHash: {
             type: String,
             select: false
@@ -34,6 +51,8 @@ const userSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+userSchema.index({ interests: 1 });
 
 userSchema.set('toJSON', toJsonOptions);
 
